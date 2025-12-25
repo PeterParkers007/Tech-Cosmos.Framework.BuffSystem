@@ -459,11 +459,6 @@ public class HealthThresholdMode<T> : ExecutionMode<T> where T : class
             return damageable.HealthPercentage < threshold;
         return false;
     }
-    
-    public override void Execution(Action<T> applyAction)
-    {
-        applyAction?.Invoke(target);
-    }
 }
 ```
 
