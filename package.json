@@ -1,0 +1,29 @@
+{
+  "name": "com.techcosmos.generic_buff_framework",  
+  "version": "1.0.0",           
+  "displayName": "TechCosmos - Generic Buff Framework",  
+  "description": "一个通用、灵活且可扩展的 Unity 游戏增益/减益系统框架.支持持续、周期性和自定义执行模式.",
+  "unity": "2021.3",           
+  "unityRelease": "0f1",       
+  
+  "keywords": [                
+    "buff",
+    "debuff",
+    "status-effect",
+    "game-framework",
+    "modifier",
+    "dot",
+    "hot",
+    "gameplay",
+    "system",
+    "rpg",
+    "mmo",
+    "strategy"
+  ],
+  
+  "author": {                  
+    "name": "Tech-Cosmos",
+    "email": "3427463164@qq.com",
+    "url": "https://github.com/PeterParkers007/Tech-Cosmos"
+  }
+}
