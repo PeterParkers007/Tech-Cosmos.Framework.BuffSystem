@@ -10,6 +10,7 @@ namespace TechCosmos.GBF.Runtime
 
         public event Action<IBuff<T>> OnBuffAdded;
         public event Action<IBuff<T>> OnBuffRemoved;
+        public event Action<T> OnBuffsCleared;
 
         public BuffSystem(T target) => _target = target;
         public void BuffUpdate(float deltaTime)
@@ -47,7 +48,11 @@ namespace TechCosmos.GBF.Runtime
             OnBuffRemoved?.Invoke(buff);
         }
         public void ManualRemoveBuff(IBuff<T> buff) => buff.isOver = true;
-        public void ClearBuff() => buffs.Clear();
+        public void ClearBuff()
+        {
+            buffs.Clear();
+            OnBuffsCleared?.Invoke(_target);
+        }
         /// <summary>
         /// 移除包含任意一个指定标签的所有buff
         /// </summary>
