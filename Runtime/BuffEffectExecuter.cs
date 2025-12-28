@@ -18,6 +18,7 @@ namespace TechCosmos.GBF.Runtime
             if (target == null) return; 
             _executionMode.target = target;
             _executionMode.Execution(_action);
+            foreach (var effect in this.buffEffects) if (effect is IUpdate update) update.OnUpdate();
         }
     }
 }
