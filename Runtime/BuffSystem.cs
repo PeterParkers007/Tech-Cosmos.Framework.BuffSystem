@@ -210,6 +210,7 @@ namespace TechCosmos.GBF.Runtime
 
             return false;
         }
+        public int BuffCount() => buffs.Count;
     }
 }
 
