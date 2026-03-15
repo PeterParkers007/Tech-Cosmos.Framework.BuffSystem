@@ -1,4 +1,8 @@
-public abstract class BuffEffect<T>
+namespace TechCosmos.GBF.Runtime
 {
-    public abstract void Effect(T target);
+    public abstract class BuffEffect<T>
+    {
+        public abstract void Effect(T target);
+    }
 }
+
