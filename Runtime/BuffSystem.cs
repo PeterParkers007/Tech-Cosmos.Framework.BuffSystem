@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
+
 namespace TechCosmos.GBF.Runtime
 {
     public class BuffSystem<T> where T : class
@@ -10,9 +10,10 @@ namespace TechCosmos.GBF.Runtime
 
         public event Action<IBuff<T>> OnBuffAdded;
         public event Action<IBuff<T>> OnBuffRemoved;
-        public event Action<T> OnBuffsCleared;
 
         public BuffSystem(T target) => _target = target;
+
+        // ===== 更新循环 =====
         public void BuffUpdate(float deltaTime)
         {
             for (int i = buffs.Count - 1; i >= 0; i--)
@@ -20,77 +21,216 @@ namespace TechCosmos.GBF.Runtime
                 var buff = buffs[i];
                 buff.Update(deltaTime);
                 if (buff.isOver)
-                {
                     RemoveBuff(buff);
-                }
             }
         }
+
         public void SortBuffs() => buffs.Sort((a, b) => a.priority.CompareTo(b.priority));
+
+        // ===== 添加 Buff（含堆叠策略）=====
         public void AddBuff(IBuff<T> buff)
         {
+            if (buff == null) return;
+
+            var existing = FindBuffByName(buff.BuffName);
+
+            if (existing != null)
+            {
+                switch (existing.StackPolicy)
+                {
+                    case BuffStackPolicy.ExtendDuration:
+                        existing.Refresh();
+                        OnBuffAdded?.Invoke(existing);
+                        return;
+
+                    case BuffStackPolicy.StackAndRefresh:
+                        if (existing.CurrentStacks < existing.MaxStacks)
+                            existing.CurrentStacks++;
+                        existing.Refresh();
+                        OnBuffAdded?.Invoke(existing);
+                        return;
+
+                    case BuffStackPolicy.Independent:
+                        break;
+
+                    case BuffStackPolicy.Replace:
+                        RemoveBuff(existing);
+                        break;
+                }
+            }
+
             buff.target = _target;
             buff.TriggerApplyEvent(buff.target);
             buffs.Add(buff);
             SortBuffs();
             OnBuffAdded?.Invoke(buff);
         }
+
         public void AddBuff(params IBuff<T>[] buffs)
         {
-            foreach (var buff in buffs)
-            {
-                buff.target = _target;
-                AddBuff(buff);
-            }
+            for (int i = 0; i < buffs.Length; i++)
+                AddBuff(buffs[i]);
         }
+
+        // ===== 移除 Buff =====
         public void RemoveBuff(IBuff<T> buff)
         {
+            if (buff == null) return;
             buffs.Remove(buff);
             OnBuffRemoved?.Invoke(buff);
         }
-        public void ManualRemoveBuff(IBuff<T> buff) => buff.isOver = true;
-        public void ClearBuff()
+
+        public void ManualRemoveBuff(IBuff<T> buff)
         {
-            buffs.Clear();
-            OnBuffsCleared?.Invoke(_target);
+            if (buff != null)
+                buff.isOver = true;
         }
-        /// <summary>
-        /// 移除包含任意一个指定标签的所有buff
-        /// </summary>
+
+        public void ClearBuff() => buffs.Clear();
+
+        // ===== 驱散 =====
+        public void DispelByTags(params string[] tags)
+        {
+            for (int i = buffs.Count - 1; i >= 0; i--)
+            {
+                if (CheckBuffHasAnyTag(buffs[i], tags))
+                    ManualRemoveBuff(buffs[i]);
+            }
+        }
+
+        public void RemoveBuffsByName(string buffName)
+        {
+            for (int i = buffs.Count - 1; i >= 0; i--)
+            {
+                if (buffs[i].BuffName == buffName)
+                    ManualRemoveBuff(buffs[i]);
+            }
+        }
+
+        // ===== 属性修改拦截链（字符串驱动）=====
+        public float GetModifiedValue(string modifyType, float baseValue)
+        {
+            float result = baseValue;
+            for (int i = 0; i < buffs.Count; i++)
+            {
+                if (!buffs[i].isOver)
+                    result = buffs[i].ModifyValue(modifyType, result);
+            }
+            return result;
+        }
+
+        // ===== 事件分发（字符串驱动）=====
+        public void DispatchAction(string actionName, T unit = null, float value = default, string damageType = default)
+        {
+            for (int i = 0; i < buffs.Count; i++)
+            {
+                if (!buffs[i].isOver)
+                    buffs[i].OnAction(actionName, unit, value, damageType);
+            }
+        }
+
+        // ===== Tag 查询 =====
         public void RemoveBuffsByAnyTag(params string[] tags)
         {
             for (int i = buffs.Count - 1; i >= 0; i--)
             {
-                var buff = buffs[i];
-                if (CheckBuffHasAnyTag(buff, tags))
-                {
-                    ManualRemoveBuff(buff);
-                }
+                if (CheckBuffHasAnyTag(buffs[i], tags))
+                    ManualRemoveBuff(buffs[i]);
             }
         }
 
-        /// <summary>
-        /// 移除包含所有指定标签的所有buff
-        /// </summary>
         public void RemoveBuffsByAllTags(params string[] tags)
         {
             for (int i = buffs.Count - 1; i >= 0; i--)
             {
-                var buff = buffs[i];
-                if (CheckBuffHasAllTags(buff, tags))
-                {
-                    ManualRemoveBuff(buff);
-                }
+                if (CheckBuffHasAllTags(buffs[i], tags))
+                    ManualRemoveBuff(buffs[i]);
             }
         }
 
-        // 辅助方法
+        public bool HasAnyBuff(params string[] buffTags)
+        {
+            for (int i = 0; i < buffs.Count; i++)
+            {
+                if (CheckBuffHasAnyTag(buffs[i], buffTags))
+                    return true;
+            }
+            return false;
+        }
+
+        public bool HasAllBuff(params string[] buffTags)
+        {
+            for (int i = 0; i < buffs.Count; i++)
+            {
+                if (CheckBuffHasAllTags(buffs[i], buffTags))
+                    return true;
+            }
+            return false;
+        }
+
+        public IBuff<T> FindBuffByAnyTag(params string[] tags)
+        {
+            for (int i = 0; i < buffs.Count; i++)
+            {
+                if (CheckBuffHasAnyTag(buffs[i], tags))
+                    return buffs[i];
+            }
+            return null;
+        }
+
+        public IBuff<T> FindBuffByAllTags(params string[] tags)
+        {
+            for (int i = 0; i < buffs.Count; i++)
+            {
+                if (CheckBuffHasAllTags(buffs[i], tags))
+                    return buffs[i];
+            }
+            return null;
+        }
+
+        public List<IBuff<T>> FindAllBuffsByAnyTag(params string[] tags)
+        {
+            var result = new List<IBuff<T>>();
+            for (int i = 0; i < buffs.Count; i++)
+            {
+                if (CheckBuffHasAnyTag(buffs[i], tags))
+                    result.Add(buffs[i]);
+            }
+            return result;
+        }
+
+        public List<IBuff<T>> FindAllBuffsByAllTags(params string[] tags)
+        {
+            var result = new List<IBuff<T>>();
+            for (int i = 0; i < buffs.Count; i++)
+            {
+                if (CheckBuffHasAllTags(buffs[i], tags))
+                    result.Add(buffs[i]);
+            }
+            return result;
+        }
+
+        public IBuff<T> FindBuffByName(string buffName)
+        {
+            for (int i = 0; i < buffs.Count; i++)
+            {
+                if (buffs[i].BuffName == buffName)
+                    return buffs[i];
+            }
+            return null;
+        }
+
+        // ===== Tag 辅助方法 =====
         private bool CheckBuffHasAnyTag(IBuff<T> buff, params string[] searchTags)
         {
-            foreach (var buffTag in buff.tags)
+            var buffTags = buff.tags;
+            if (buffTags == null) return false;
+
+            for (int i = 0; i < buffTags.Length; i++)
             {
-                foreach (var searchTag in searchTags)
+                for (int j = 0; j < searchTags.Length; j++)
                 {
-                    if (buffTag == searchTag)
+                    if (buffTags[i] == searchTags[j])
                         return true;
                 }
             }
@@ -99,118 +239,23 @@ namespace TechCosmos.GBF.Runtime
 
         private bool CheckBuffHasAllTags(IBuff<T> buff, params string[] searchTags)
         {
-            foreach (var searchTag in searchTags)
+            var buffTags = buff.tags;
+            if (buffTags == null) return false;
+
+            for (int i = 0; i < searchTags.Length; i++)
             {
-                bool tagFound = false;
-                foreach (var buffTag in buff.tags)
+                bool found = false;
+                for (int j = 0; j < buffTags.Length; j++)
                 {
-                    if (buffTag == searchTag)
+                    if (buffTags[j] == searchTags[i])
                     {
-                        tagFound = true;
+                        found = true;
                         break;
                     }
                 }
-                if (!tagFound) return false;
+                if (!found) return false;
             }
             return true;
         }
-
-        // 查询方法也应该有两个版本
-        public IBuff<T> FindBuffByAnyTag(params string[] tags)
-        {
-            foreach (var buff in buffs)
-            {
-                if (CheckBuffHasAnyTag(buff, tags))
-                    return buff;
-            }
-            return null;
-        }
-
-        public IBuff<T> FindBuffByAllTags(params string[] tags)
-        {
-            foreach (var buff in buffs)
-            {
-                if (CheckBuffHasAllTags(buff, tags))
-                    return buff;
-            }
-            return null;
-        }
-
-        // 批量查询版本
-        public List<IBuff<T>> FindAllBuffsByAnyTag(params string[] tags)
-        {
-            List<IBuff<T>> result = new List<IBuff<T>>();
-            foreach (var buff in buffs)
-            {
-                if (CheckBuffHasAnyTag(buff, tags))
-                    result.Add(buff);
-            }
-            return result;
-        }
-
-        public List<IBuff<T>> FindAllBuffsByAllTags(params string[] tags)
-        {
-            List<IBuff<T>> result = new List<IBuff<T>>();
-            foreach (var buff in buffs)
-            {
-                if (CheckBuffHasAllTags(buff, tags))
-                    result.Add(buff);
-            }
-            return result;
-        }
-        /// <summary>
-        /// 检查是否存在任何一个buff包含任意一个指定的标签
-        /// </summary>
-        public bool HasAnyBuff(params string[] buffTags)
-        {
-            foreach (var buff in buffs)
-            {
-                foreach (var buffTag in buff.tags)
-                {
-                    foreach (var searchTag in buffTags)
-                    {
-                        if (buffTag == searchTag)
-                            return true;
-                    }
-                }
-            }
-            return false;
-        }
-        /// <summary>
-        /// 检查是否存在任何一个buff包含所有指定的标签
-        /// </summary>
-        public bool HasAllBuff(params string[] buffTags)
-        {
-            foreach (var buff in buffs)
-            {
-                bool hasAllTags = true;
-
-                foreach (var searchTag in buffTags)
-                {
-                    bool tagFound = false;
-
-                    foreach (var buffTag in buff.tags)
-                    {
-                        if (buffTag == searchTag)
-                        {
-                            tagFound = true;
-                            break;
-                        }
-                    }
-
-                    if (!tagFound)
-                    {
-                        hasAllTags = false;
-                        break;
-                    }
-                }
-
-                if (hasAllTags) return true;
-            }
-
-            return false;
-        }
-        public int BuffCount() => buffs.Count;
     }
 }
-
