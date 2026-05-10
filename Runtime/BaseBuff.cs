@@ -105,6 +105,12 @@ namespace TechCosmos.GBF.Runtime
         public void SetPaused(bool paused) => _isPaused = paused;
         public void SetTimePaused(bool paused) => _isTimePaused = paused;
         public void SetTimeScale(float scale) => _timeScale = Mathf.Max(0, scale);
+        public void SetDuration(float duration)
+        {
+            _duration = duration;
+            _timer = 0f;
+            isOver = false;
+        }
         public float TimeScale => _timeScale;
 
         public float RemainingTime => Mathf.Max(0, _duration - _timer);
