@@ -1,3 +1,7 @@
+// ============================================================
+// 文件：BaseBuff.cs
+// 路径：TechCosmos.GBF.Runtime/BaseBuff.cs
+// ============================================================
 using System;
 using System.Collections.Generic;
 using UnityEngine;
@@ -14,7 +18,7 @@ namespace TechCosmos.GBF.Runtime
         public event Action<T> OnApply;
         public event Action<T> OnRemove;
 
-        protected List<BuffEffectExecuter<T>> _buffEffectExecuters = new();
+        protected List<BuffEffectExecuterBase> _effectExecuters = new();
 
         protected float _duration;
         protected float _timer;
@@ -22,16 +26,14 @@ namespace TechCosmos.GBF.Runtime
         protected bool _isTimePaused;
         protected float _timeScale = 1f;
 
-        // ===== 堆叠 =====
+        protected T _caster;
+
         public virtual string BuffName => GetType().Name;
         public virtual BuffStackPolicy StackPolicy => BuffStackPolicy.ExtendDuration;
         public virtual int MaxStacks => 1;
         public int CurrentStacks { get; set; } = 1;
 
-        // ===== 属性修改（字符串驱动）=====
-        protected Dictionary<string, Func<float, float>> _modifiers = new();
-
-        // ===== 事件响应（字符串驱动）=====
+        protected Dictionary<string, Func<float, BuffModifyContext<T>, float>> _modifiers = new();
         protected Dictionary<string, Action<string, T, float, string>> _actions = new();
 
         public BaseBuff(T target, float duration, string[] tags = null)
@@ -45,28 +47,21 @@ namespace TechCosmos.GBF.Runtime
             this.tags = tags ?? Array.Empty<string>();
         }
 
-        // ===== 执行器管理 =====
-        public void AddEffectExecuter(BuffEffectExecuter<T> executer)
-            => _buffEffectExecuters.Add(executer);
+        public void AddEffectExecuter(BuffEffectExecuterBase executer) => _effectExecuters.Add(executer);
+        public void AddEffectExecuter(params BuffEffectExecuterBase[] executers) => _effectExecuters.AddRange(executers);
+        public void RemoveEffectExecuter(BuffEffectExecuterBase executer) => _effectExecuters.Remove(executer);
 
-        public void AddEffectExecuter(params BuffEffectExecuter<T>[] executers)
-            => _buffEffectExecuters.AddRange(executers);
-
-        public void RemoveEffectExecuter(BuffEffectExecuter<T> executer)
-            => _buffEffectExecuters.Remove(executer);
-
-        // ===== 属性修改（字符串驱动）=====
-        public void RegisterModifier(string modifyType, Func<float, float> modifier)
+        public void RegisterModifier(string modifyType, Func<float, BuffModifyContext<T>, float> modifier)
             => _modifiers[modifyType] = modifier;
 
-        public virtual float ModifyValue(string modifyType, float baseValue)
+        public virtual float ModifyValue(string modifyType, float baseValue, BuffModifyContext<T> context = null)
         {
+            var ctx = context ?? new BuffModifyContext<T> { target = target, caster = _caster };
             if (_modifiers.TryGetValue(modifyType, out var modifier))
-                return modifier(baseValue);
+                return modifier(baseValue, ctx);
             return baseValue;
         }
 
-        // ===== 事件响应（字符串驱动）=====
         public void RegisterAction(string actionName, Action<string, T, float, string> action)
             => _actions[actionName] = action;
 
@@ -76,44 +71,33 @@ namespace TechCosmos.GBF.Runtime
                 action(actionName, unit, value, damageType);
         }
 
-        // ===== 生命周期 =====
         public void Apply()
         {
-            for (int i = 0; i < _buffEffectExecuters.Count; i++)
-                _buffEffectExecuters[i].Apply(target);
-        }
-
-        public void Remove()
-        {
-            for (int i = 0; i < _buffEffectExecuters.Count; i++)
+            var context = new BuffContext<T>
             {
-                if (_buffEffectExecuters[i] is IRollBack rollBack)
-                    rollBack.RollBack();
-            }
-            _buffEffectExecuters.Clear();
-            TriggerRemoveEvent(target);
+                deltaTime = Time.deltaTime,
+                elapsedTime = _timer,
+                progress = Progress,
+                currentStacks = CurrentStacks,
+                source = target
+            };
+
+            for (int i = 0; i < _effectExecuters.Count; i++)
+                _effectExecuters[i].Apply(target, context);
         }
 
+        public void Remove() => TriggerRemoveEvent(target);
         public void TriggerApplyEvent(T target) => OnApply?.Invoke(target);
         public void TriggerRemoveEvent(T target) => OnRemove?.Invoke(target);
 
         public void Update(float deltaTime)
         {
             if (_isPaused) return;
-
-            if (!_isTimePaused)
-                _timer += deltaTime * _timeScale;
-
+            if (!_isTimePaused) _timer += deltaTime * _timeScale;
             Apply();
-
-            if (_timer >= _duration)
-            {
-                Remove();
-                isOver = true;
-            }
+            if (_timer >= _duration) { Remove(); isOver = true; }
         }
 
-        // ===== 时间控制 =====
         public void Pause() => _isPaused = true;
         public void TimePause() => _isTimePaused = true;
         public void Resume() => _isPaused = false;
@@ -128,12 +112,7 @@ namespace TechCosmos.GBF.Runtime
         public float Progress => _duration > 0 ? Mathf.Clamp01(_timer / _duration) : 1f;
         public bool IsPaused => _isPaused;
 
-        public void Refresh()
-        {
-            _timer = 0f;
-            isOver = false;
-        }
-
+        public void Refresh() { _timer = 0f; isOver = false; }
         public void ResetTimer() => _timer = 0f;
         public void ExtendDuration(float extraTime) => _duration += extraTime;
         public void SetRemainingTime(float remaining) => _timer = Mathf.Max(0, _duration - remaining);

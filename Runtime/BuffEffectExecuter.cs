@@ -1,24 +1,30 @@
 using System;
 using System.Collections.Generic;
+using UnityEngine;
+
 namespace TechCosmos.GBF.Runtime
 {
-    public abstract class BuffEffectExecuter<T> where T : class
+    [Serializable]
+    public class BuffEffectExecuterBase
     {
-        protected ExecutionMode<T> _executionMode;
-        protected List<BuffEffect<T>> buffEffects = new();
-        protected Action<T> _action;
-        public BuffEffectExecuter(ExecutionMode<T> executionMode, params BuffEffect<T>[] buffEffects)
+        [SerializeReference]
+        public ExecutionModeBase executionMode;
+
+        [SerializeReference]
+        public List<BuffEffectBase> effects = new();
+
+        public void Apply(object target, BuffContextBase context)
         {
-            _executionMode = executionMode;
-            this.buffEffects.AddRange(buffEffects);
-            foreach (var effect in this.buffEffects) _action += effect.Effect;
-        }
-        public virtual void Apply(T target)
-        {
-            if (target == null) return; 
-            _executionMode.target = target;
-            _executionMode.Execution(_action);
-            foreach (var effect in this.buffEffects) if (effect is IUpdate update) update.OnUpdate();
+            if (target == null || executionMode == null) return;
+            if (!executionMode.IsEligible()) return;
+
+            executionMode.target = target;
+            executionMode.context = context;
+
+            for (int i = 0; i < effects.Count; i++)
+                effects[i]?.ExecuteBase(target, context);
+
+            executionMode.MarkExecuted();
         }
     }
 }
