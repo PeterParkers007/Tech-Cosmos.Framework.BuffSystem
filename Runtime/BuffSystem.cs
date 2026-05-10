@@ -15,6 +15,7 @@ namespace TechCosmos.GBF.Runtime
         public event Action<IBuff<T>> OnBuffAdded;
         public event Action<IBuff<T>> OnBuffRemoved;
         public T Target => _target;
+        public int BuffCount => buffs.Count;
         public BuffSystem(T target) => _target = target;
 
         public void BuffUpdate(float deltaTime)
