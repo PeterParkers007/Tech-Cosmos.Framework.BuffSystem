@@ -25,7 +25,7 @@ namespace TechCosmos.GBF.Runtime
     [Serializable]
     public sealed class ContinuityMode : ExecutionMode<object>
     {
-        [SerializeField] private bool _executed;
+        [NonSerialized] private bool _executed;
         public override bool IsEligible() => !_executed;
         public override void MarkExecuted() => _executed = true;
     }
@@ -35,7 +35,7 @@ namespace TechCosmos.GBF.Runtime
     public sealed class PeriodicityMode : ExecutionMode<object>
     {
         [SerializeField] private float _interval = 1f;
-        [SerializeField] private float _nextTime;
+        [NonSerialized] private float _nextTime;
 
         public float Interval => _interval;
         public PeriodicityMode() { }
