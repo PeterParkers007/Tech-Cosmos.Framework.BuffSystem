@@ -1,6 +1,6 @@
 // ============================================================
-// ÎÄ¼þ£ºBaseBuff.cs
-// Â·¾¶£ºTechCosmos.GBF.Runtime/BaseBuff.cs
+// ???BaseBuff.cs
+// ???TechCosmos.GBF.Runtime/BaseBuff.cs
 // ============================================================
 using System;
 using System.Collections.Generic;
@@ -32,6 +32,9 @@ namespace TechCosmos.GBF.Runtime
         public virtual BuffStackPolicy StackPolicy => BuffStackPolicy.ExtendDuration;
         public virtual int MaxStacks => 1;
         public int CurrentStacks { get; set; } = 1;
+
+        // ?????????? Buff
+        public bool IsPermanent => _duration < 0;
 
         protected Dictionary<string, Func<float, BuffModifyContext<T>, float>> _modifiers = new();
         protected Dictionary<string, Action<string, T, float, string>> _actions = new();
@@ -95,7 +98,13 @@ namespace TechCosmos.GBF.Runtime
             if (_isPaused) return;
             if (!_isTimePaused) _timer += deltaTime * _timeScale;
             Apply();
-            if (_timer >= _duration) { Remove(); isOver = true; }
+
+            // ?????-1 ?????????
+            if (!IsPermanent && _timer >= _duration)
+            {
+                Remove();
+                isOver = true;
+            }
         }
 
         public void Pause() => _isPaused = true;
@@ -111,16 +120,42 @@ namespace TechCosmos.GBF.Runtime
             _timer = 0f;
             isOver = false;
         }
+
         public float TimeScale => _timeScale;
 
-        public float RemainingTime => Mathf.Max(0, _duration - _timer);
+        public float RemainingTime
+        {
+            get
+            {
+                if (IsPermanent) return float.MaxValue;
+                return Mathf.Max(0, _duration - _timer);
+            }
+        }
+
         public float ElapsedTime => _timer;
-        public float Progress => _duration > 0 ? Mathf.Clamp01(_timer / _duration) : 1f;
+
+        public float Progress
+        {
+            get
+            {
+                if (IsPermanent) return 0f;
+                return _duration > 0 ? Mathf.Clamp01(_timer / _duration) : 1f;
+            }
+        }
+
         public bool IsPaused => _isPaused;
 
         public void Refresh() { _timer = 0f; isOver = false; }
         public void ResetTimer() => _timer = 0f;
-        public void ExtendDuration(float extraTime) => _duration += extraTime;
-        public void SetRemainingTime(float remaining) => _timer = Mathf.Max(0, _duration - remaining);
+        public void ExtendDuration(float extraTime)
+        {
+            if (!IsPermanent)
+                _duration += extraTime;
+        }
+        public void SetRemainingTime(float remaining)
+        {
+            if (!IsPermanent)
+                _timer = Mathf.Max(0, _duration - remaining);
+        }
     }
 }
