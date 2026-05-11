@@ -650,6 +650,12 @@ namespace TechCosmos.GBF.Editor
                 EditorGUILayout.EndHorizontal();
 
                 DrawActionNameField(elem.FindPropertyRelative("actionName"));
+
+                // 事件自己的效果列表（直接 List<BuffEffectBase>，不走执行模式）
+                var effectsList = elem.FindPropertyRelative("effects");
+                if (effectsList != null)
+                    EditorGUILayout.PropertyField(effectsList, new GUIContent("触发效果"), true);
+
                 EditorGUILayout.EndVertical();
             }
 
@@ -665,6 +671,9 @@ namespace TechCosmos.GBF.Editor
                 }
                 EditorGUILayout.EndHorizontal();
             }
+
+            if (GUILayout.Button("+ 添加事件", GUILayout.Height(22)))
+                AddAction(list, "NewAction");
 
             EditorGUILayout.EndVertical();
         }

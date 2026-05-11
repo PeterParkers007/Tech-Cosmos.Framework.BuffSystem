@@ -96,7 +96,9 @@ namespace TechCosmos.GBF.Runtime
     public class ActionConfig
     {
         public string actionName;
-        public List<EffectConfig> effects = new();
+
+        [SerializeReference]
+        public List<BuffEffectBase> effects = new();
     }
 
     [Serializable]

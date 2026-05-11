@@ -2,6 +2,7 @@
 // ÎÄ¼þ£ºConfigurableBuff.cs
 // Â·¾¶£ºTechCosmos.GBF.Runtime/ConfigurableBuff.cs
 // ============================================================
+using UnityEngine;
 namespace TechCosmos.GBF.Runtime
 {
     public class ConfigurableBuff<T> : BaseBuff<T> where T : class
@@ -22,7 +23,19 @@ namespace TechCosmos.GBF.Runtime
 
             foreach (var actionCfg in _data.actions)
             {
-                RegisterAction(actionCfg.actionName, (actionName, unit, value, damageType) => { });
+                var capturedEffects = actionCfg.effects;
+                RegisterAction(actionCfg.actionName, (actionName, unit, value, damageType) =>
+                {
+                    var context = new BuffContext<T>
+                    {
+                        source = unit ?? target,
+                        deltaTime = Time.deltaTime,
+                        currentStacks = CurrentStacks
+                    };
+
+                    for (int i = 0; i < capturedEffects.Count; i++)
+                        capturedEffects[i]?.ExecuteBase(target, context);
+                });
             }
 
             foreach (var executer in _data.effectExecuters)

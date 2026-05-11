@@ -1,6 +1,6 @@
-// ============================================================
-// ÎÄ¼þ£ºBuffSystem.cs
-// Â·¾¶£ºTechCosmos.GBF.Runtime/BuffSystem.cs
+ï»¿// ============================================================
+// ï¿½Ä¼ï¿½ï¿½ï¿½BuffSystem.cs
+// Â·ï¿½ï¿½ï¿½ï¿½TechCosmos.GBF.Runtime/BuffSystem.cs
 // ============================================================
 using System;
 using System.Collections.Generic;
