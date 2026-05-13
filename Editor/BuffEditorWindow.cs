@@ -229,85 +229,123 @@ namespace TechCosmos.GBF.Editor
             EditorGUILayout.EndVertical();
         }
 
-        // ===== 标签编辑 =====
+        // ===== 标签编辑（带折叠） =====
         private void DrawTagsField(SerializedProperty tagsProp)
         {
             if (tagsProp == null) return;
 
             var tagEnumType = GetBuffTagEnumType();
 
-            EditorGUILayout.LabelField("标签", EditorStyles.boldLabel);
+            // 确保折叠状态存在
+            if (!_foldoutStates.ContainsKey("tags"))
+                _foldoutStates["tags"] = false;
 
-            // 绘制已有标签
+            // 获取当前标签列表的摘要
+            var tagSummary = new List<string>();
             for (int i = 0; i < tagsProp.arraySize; i++)
             {
-                var elem = tagsProp.GetArrayElementAtIndex(i);
-
-                EditorGUILayout.BeginHorizontal();
-
-                // 用枚举下拉框显示
-                if (tagEnumType != null && Enum.TryParse(tagEnumType, elem.stringValue, out var enumVal))
-                {
-                    var newVal = EditorGUILayout.EnumPopup((Enum)enumVal);
-                    if (newVal.ToString() != elem.stringValue)
-                    {
-                        elem.stringValue = newVal.ToString();
-                    }
-                }
-                else
-                {
-                    // 兜底：如果枚举没找到，用文本输入
-                    elem.stringValue = EditorGUILayout.TextField(elem.stringValue);
-                }
-
-                // 删除按钮
-                GUI.backgroundColor = RemoveColor;
-                if (GUILayout.Button("✕", GUILayout.Width(25)))
-                {
-                    pendingDeleteTag = i;
-                }
-                GUI.backgroundColor = Color.white;
-
-                EditorGUILayout.EndHorizontal();
+                tagSummary.Add(tagsProp.GetArrayElementAtIndex(i).stringValue);
             }
+            string summaryText = tagsProp.arraySize > 0
+                ? string.Join(", ", tagSummary)
+                : "无标签";
 
-            EditorGUILayout.Space(2);
+            // 折叠标题行
+            EditorGUILayout.BeginHorizontal();
+            _foldoutStates["tags"] = EditorGUILayout.Foldout(_foldoutStates["tags"], $"标签 ({tagsProp.arraySize})", true);
+            GUILayout.FlexibleSpace();
 
-            // 添加按钮
-            if (tagEnumType != null)
+            var summaryStyle = new GUIStyle(EditorStyles.miniLabel)
             {
-                var enumNames = Enum.GetNames(tagEnumType).Where(n => n != "None").ToList();
+                normal = { textColor = new Color(0.6f, 0.6f, 0.6f) },
+                alignment = TextAnchor.MiddleRight
+            };
+            if (!_foldoutStates["tags"])
+            {
+                EditorGUILayout.LabelField(summaryText, summaryStyle, GUILayout.MaxWidth(250));
+            }
+            EditorGUILayout.EndHorizontal();
 
-                // 收集已添加的标签
-                var existingTags = new HashSet<string>();
+            // 折叠内容
+            if (_foldoutStates["tags"])
+            {
+                EditorGUI.indentLevel++;
+                EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+
+                // 绘制已有标签
                 for (int i = 0; i < tagsProp.arraySize; i++)
                 {
-                    existingTags.Add(tagsProp.GetArrayElementAtIndex(i).stringValue);
+                    var elem = tagsProp.GetArrayElementAtIndex(i);
+
+                    EditorGUILayout.BeginHorizontal();
+
+                    // 用枚举下拉框显示
+                    if (tagEnumType != null && Enum.TryParse(tagEnumType, elem.stringValue, out var enumVal))
+                    {
+                        var newVal = EditorGUILayout.EnumPopup((Enum)enumVal);
+                        if (newVal.ToString() != elem.stringValue)
+                        {
+                            elem.stringValue = newVal.ToString();
+                        }
+                    }
+                    else
+                    {
+                        // 兜底：如果枚举没找到，用文本输入
+                        elem.stringValue = EditorGUILayout.TextField(elem.stringValue);
+                    }
+
+                    // 删除按钮
+                    GUI.backgroundColor = RemoveColor;
+                    if (GUILayout.Button("✕", GUILayout.Width(25)))
+                    {
+                        pendingDeleteTag = i;
+                    }
+                    GUI.backgroundColor = Color.white;
+
+                    EditorGUILayout.EndHorizontal();
                 }
 
-                // 可用的标签（排除已添加的）
-                var availableNames = enumNames.Where(n => !existingTags.Contains(n)).ToList();
+                EditorGUILayout.Space(2);
 
-                if (availableNames.Count > 0)
+                // 添加按钮
+                if (tagEnumType != null)
                 {
-                    if (GUILayout.Button($"+ 添加标签 ({availableNames.Count} 可用)", GUILayout.Height(22)))
+                    var enumNames = Enum.GetNames(tagEnumType).Where(n => n != "None").ToList();
+
+                    // 收集已添加的标签
+                    var existingTags = new HashSet<string>();
+                    for (int i = 0; i < tagsProp.arraySize; i++)
                     {
-                        ShowAddTagMenu(tagsProp, availableNames);
+                        existingTags.Add(tagsProp.GetArrayElementAtIndex(i).stringValue);
+                    }
+
+                    // 可用的标签（排除已添加的）
+                    var availableNames = enumNames.Where(n => !existingTags.Contains(n)).ToList();
+
+                    if (availableNames.Count > 0)
+                    {
+                        if (GUILayout.Button($"+ 添加标签 ({availableNames.Count} 可用)", GUILayout.Height(22)))
+                        {
+                            ShowAddTagMenu(tagsProp, availableNames);
+                        }
+                    }
+                    else
+                    {
+                        EditorGUILayout.HelpBox("所有标签已添加", MessageType.Info);
                     }
                 }
                 else
                 {
-                    EditorGUILayout.LabelField("所有标签已添加", EditorStyles.miniLabel);
+                    // 枚举没找到时，提供手动输入添加
+                    if (GUILayout.Button("+ 添加标签（手动输入）", GUILayout.Height(22)))
+                    {
+                        tagsProp.InsertArrayElementAtIndex(tagsProp.arraySize);
+                        tagsProp.GetArrayElementAtIndex(tagsProp.arraySize - 1).stringValue = "";
+                    }
                 }
-            }
-            else
-            {
-                // 枚举没找到时，提供手动输入添加
-                if (GUILayout.Button("+ 添加标签（手动输入）", GUILayout.Height(22)))
-                {
-                    tagsProp.InsertArrayElementAtIndex(tagsProp.arraySize);
-                    tagsProp.GetArrayElementAtIndex(tagsProp.arraySize - 1).stringValue = "";
-                }
+
+                EditorGUILayout.EndVertical();
+                EditorGUI.indentLevel--;
             }
         }
 
