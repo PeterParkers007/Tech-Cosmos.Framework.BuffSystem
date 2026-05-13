@@ -1,5 +1,5 @@
 // ============================================================
-// 文件：BuffDataSO.cs（ModifierConfig 修改后）
+// 文件：BuffDataSO.cs
 // 路径：TechCosmos.GBF.Runtime/BuffDataSO.cs
 // ============================================================
 using System;
@@ -17,7 +17,9 @@ namespace TechCosmos.GBF.Runtime
         [Header("基础信息")]
         public string buffName;
         public float duration;
-        public string[] tags;
+
+        [Header("标签")]
+        public string[] tags = Array.Empty<string>();
 
         [Header("堆叠")]
         public BuffStackPolicy stackPolicy = BuffStackPolicy.ExtendDuration;
@@ -33,6 +35,8 @@ namespace TechCosmos.GBF.Runtime
         [SerializeReference]
         public List<BuffEffectExecuterBase> effectExecuters = new();
     }
+
+    // ===== 以下为原有类，保持不变 =====
 
     public enum BuffFormulaType { Static, Reference, Custom }
     public enum ModifierMode { Set, Add, Multiply }
@@ -136,11 +140,49 @@ namespace TechCosmos.GBF.Runtime
         private static float ResolveField(object obj, string fieldName)
         {
             if (obj == null) return 0f;
+
+            // 处理嵌套路径，如 "Runtime.MoveSpeed"
+            if (fieldName.Contains('.'))
+            {
+                var parts = fieldName.Split('.');
+                object current = obj;
+                for (int i = 0; i < parts.Length - 1; i++)
+                {
+                    current = ResolveSingleField(current, parts[i]);
+                    if (current == null) return 0f;
+                }
+                return ConvertToFloat(ResolveSingleField(current, parts[parts.Length - 1]));
+            }
+
+            return ConvertToFloat(ResolveSingleField(obj, fieldName));
+        }
+
+        private static object ResolveSingleField(object obj, string fieldName)
+        {
+            if (obj == null) return null;
             var type = obj.GetType();
+
+            // 先尝试字段
             var field = type.GetField(fieldName, BindingFlags.Public | BindingFlags.Instance);
+            if (field != null) return field.GetValue(obj);
+
+            // 再尝试属性
             var prop = type.GetProperty(fieldName, BindingFlags.Public | BindingFlags.Instance);
-            object value = field != null ? field.GetValue(obj) : prop?.GetValue(obj);
-            return value switch { float f => f, int i => i, double d => (float)d, bool b => b ? 1f : 0f, _ => 0f };
+            if (prop != null && prop.CanRead) return prop.GetValue(obj);
+
+            return null;
+        }
+
+        private static float ConvertToFloat(object value)
+        {
+            return value switch
+            {
+                float f => f,
+                int i => i,
+                double d => (float)d,
+                bool b => b ? 1f : 0f,
+                _ => 0f
+            };
         }
 
         private static float EvaluateAll(string expr)

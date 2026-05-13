@@ -10,7 +10,7 @@ namespace TechCosmos.GBF.Editor
 {
     public class BuffEnumEditorWindow : EditorWindow
     {
-        private enum EditTarget { ModifyType, ActionName }
+        private enum EditTarget { ModifyType, ActionName, BuffTag }
 
         private EditTarget target = EditTarget.ModifyType;
         private List<string> items = new();
@@ -21,6 +21,7 @@ namespace TechCosmos.GBF.Editor
 
         private const string MODIFY_ENUM_PATH = "Assets/Generated/GBF/BuffModifyType.cs";
         private const string ACTION_ENUM_PATH = "Assets/Generated/GBF/BuffActionType.cs";
+        private const string TAG_ENUM_PATH = "Assets/Generated/GBF/BuffTag.cs";
 
         [MenuItem("Tech-Cosmos/GBF/Buff Enum Editor")]
         public static void OpenWindow()
@@ -30,10 +31,7 @@ namespace TechCosmos.GBF.Editor
             window.Show();
         }
 
-        void OnEnable()
-        {
-            LoadFromFile(GetCurrentPath());
-        }
+        void OnEnable() => LoadFromFile(GetCurrentPath());
 
         void OnGUI()
         {
@@ -42,13 +40,11 @@ namespace TechCosmos.GBF.Editor
             EditorGUILayout.Space(5);
 
             EditorGUILayout.HelpBox(
-                "管理 Buff 系统的 ModifyType 和 ActionName 枚举。\n" +
-                "修改后点击「生成枚举文件」写入代码。",
+                "管理 Buff 系统的 ModifyType、ActionName 和 BuffTag 枚举。\n修改后点击「生成枚举文件」写入代码。",
                 MessageType.Info);
 
             EditorGUILayout.Space(10);
 
-            // 切换目标
             EditorGUILayout.BeginHorizontal();
             var newTarget = (EditTarget)EditorGUILayout.EnumPopup("编辑目标", target);
             if (newTarget != target)
@@ -60,7 +56,6 @@ namespace TechCosmos.GBF.Editor
 
             EditorGUILayout.Space(10);
 
-            // 添加新项
             EditorGUILayout.LabelField("添加新项", EditorStyles.boldLabel);
             EditorGUILayout.BeginHorizontal();
             newItemName = EditorGUILayout.TextField(newItemName);
@@ -74,21 +69,15 @@ namespace TechCosmos.GBF.Editor
                     newItemName = "";
                     dirty = true;
                 }
-                else
-                {
-                    EditorUtility.DisplayDialog("提示", $"'{name}' 已存在", "确定");
-                }
+                else EditorUtility.DisplayDialog("提示", $"'{name}' 已存在", "确定");
             }
             GUI.backgroundColor = Color.white;
             EditorGUILayout.EndHorizontal();
 
             EditorGUILayout.Space(10);
 
-            // 搜索
-            var searchStyle = new GUIStyle("SearchTextField");
-            searchFilter = EditorGUILayout.TextField("搜索", searchFilter, searchStyle);
+            searchFilter = EditorGUILayout.TextField("搜索", searchFilter, new GUIStyle("SearchTextField"));
 
-            // 已有列表
             EditorGUILayout.LabelField($"已有项 ({items.Count})", EditorStyles.boldLabel);
 
             var filtered = string.IsNullOrEmpty(searchFilter)
@@ -125,7 +114,6 @@ namespace TechCosmos.GBF.Editor
 
             EditorGUILayout.Space(10);
 
-            // 操作按钮
             EditorGUILayout.BeginHorizontal();
 
             GUI.backgroundColor = new Color(0.3f, 0.8f, 0.4f);
@@ -137,7 +125,7 @@ namespace TechCosmos.GBF.Editor
             }
             GUI.backgroundColor = Color.white;
 
-            if (GUILayout.Button("从文件重新加载", GUILayout.Height(35)))
+            if (GUILayout.Button("重新加载", GUILayout.Height(35)))
             {
                 LoadFromFile(GetCurrentPath());
                 dirty = false;
@@ -145,49 +133,36 @@ namespace TechCosmos.GBF.Editor
 
             EditorGUILayout.EndHorizontal();
 
-            if (dirty)
-            {
-                EditorGUILayout.HelpBox("有未保存的修改", MessageType.Warning);
-            }
+            if (dirty) EditorGUILayout.HelpBox("有未保存的修改", MessageType.Warning);
         }
 
-        private void OnDisable()
+        private string GetCurrentPath() => target switch
         {
-            if (dirty)
-            {
-                if (EditorUtility.DisplayDialog("未保存", "有修改未保存，要现在生成吗？", "生成", "放弃"))
-                {
-                    GenerateEnumFile(GetCurrentPath());
-                }
-            }
-        }
-
-        private string GetCurrentPath() => target == EditTarget.ModifyType ? MODIFY_ENUM_PATH : ACTION_ENUM_PATH;
+            EditTarget.ModifyType => MODIFY_ENUM_PATH,
+            EditTarget.ActionName => ACTION_ENUM_PATH,
+            EditTarget.BuffTag => TAG_ENUM_PATH,
+            _ => MODIFY_ENUM_PATH
+        };
 
         private void LoadFromFile(string path)
         {
             items.Clear();
             if (!File.Exists(path))
             {
-                // 默认值
                 if (target == EditTarget.ModifyType)
                 {
-                    items.Add("MoveSpeed");
-                    items.Add("AttackSpeed");
-                    items.Add("Attack");
-                    items.Add("IncomingDamage");
-                    items.Add("IncomingHeal");
-                    items.Add("MaxHealth");
-                    items.Add("Armor");
+                    items.Add("MoveSpeed"); items.Add("AttackSpeed"); items.Add("Attack");
+                    items.Add("IncomingDamage"); items.Add("IncomingHeal"); items.Add("MaxHealth"); items.Add("Armor");
+                }
+                else if (target == EditTarget.ActionName)
+                {
+                    items.Add("OnDamaged"); items.Add("OnAttackHit"); items.Add("OnKill");
+                    items.Add("OnDeath"); items.Add("OnHealed"); items.Add("OnAttacked");
                 }
                 else
                 {
-                    items.Add("OnDamaged");
-                    items.Add("OnAttackHit");
-                    items.Add("OnKill");
-                    items.Add("OnDeath");
-                    items.Add("OnHealed");
-                    items.Add("OnAttacked");
+                    items.Add("Damage"); items.Add("Heal"); items.Add("CrowdControl");
+                    items.Add("Buff"); items.Add("Debuff"); items.Add("Physical"); items.Add("Magic");
                 }
                 return;
             }
@@ -210,27 +185,35 @@ namespace TechCosmos.GBF.Editor
 
         private void GenerateEnumFile(string path)
         {
-            var enumName = target == EditTarget.ModifyType ? "BuffModifyType" : "BuffActionType";
+            var enumName = target switch
+            {
+                EditTarget.ModifyType => "BuffModifyType",
+                EditTarget.ActionName => "BuffActionType",
+                EditTarget.BuffTag => "BuffTag",
+                _ => "BuffModifyType"
+            };
+
             var sb = new StringBuilder();
             sb.AppendLine("// <auto-generated/>");
             sb.AppendLine($"// 生成时间: {DateTime.Now:yyyy/MM/dd HH:mm:ss}");
-            sb.AppendLine($"// 由 Buff 枚举编辑器生成");
+            sb.AppendLine("// 由 Buff 枚举编辑器生成");
             sb.AppendLine();
             sb.AppendLine("namespace TechCosmos.GBF.Runtime");
             sb.AppendLine("{");
             sb.AppendLine($"    public enum {enumName}");
             sb.AppendLine("    {");
             sb.AppendLine("        None = 0,");
-            sb.AppendLine();
-
-            for (int i = 0; i < items.Count; i++)
-                sb.AppendLine($"        {items[i]} = {i + 1},");
-
+            if (items.Count > 0)
+            {
+                sb.AppendLine();
+                for (int i = 0; i < items.Count; i++)
+                    sb.AppendLine($"        {items[i]} = {i + 1},");
+            }
             sb.AppendLine("    }");
             sb.AppendLine("}");
 
             var dir = Path.GetDirectoryName(path);
-            if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir)) Directory.CreateDirectory(dir);
 
             File.WriteAllText(path, sb.ToString(), Encoding.UTF8);
             AssetDatabase.Refresh();
@@ -242,10 +225,9 @@ namespace TechCosmos.GBF.Editor
         {
             if (string.IsNullOrWhiteSpace(name)) return "Unnamed";
             name = name.Trim().Replace(" ", "_");
-            if (!char.IsLetter(name[0]) && name[0] != '_')
-                name = "_" + name;
+            if (!char.IsLetter(name[0]) && name[0] != '_') name = "_" + name;
             name = System.Text.RegularExpressions.Regex.Replace(name, @"[^\w]", "");
-            return name;
+            return string.IsNullOrEmpty(name) ? "Unnamed" : name;
         }
     }
 }

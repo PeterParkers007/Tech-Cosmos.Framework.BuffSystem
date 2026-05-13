@@ -21,6 +21,7 @@ namespace TechCosmos.GBF.Editor
         private int pendingDeleteModifier = -1;
         private int pendingDeleteAction = -1;
         private int pendingDeleteExecuter = -1;
+        private int pendingDeleteTag = -1;
 
         private Dictionary<string, bool> _foldoutStates = new();
 
@@ -66,6 +67,8 @@ namespace TechCosmos.GBF.Editor
             _cachedModifyEnumType = null;
             _actionEnumSearched = false;
             _cachedActionEnumType = null;
+            _tagEnumSearched = false;
+            _cachedTagEnumType = null;
 
             if (currentTarget != null)
             {
@@ -181,6 +184,14 @@ namespace TechCosmos.GBF.Editor
                 serializedObject.ApplyModifiedProperties();
                 pendingDeleteExecuter = -1;
             }
+            if (pendingDeleteTag >= 0)
+            {
+                var list = serializedObject.FindProperty("tags");
+                if (list != null && pendingDeleteTag < list.arraySize)
+                    list.DeleteArrayElementAtIndex(pendingDeleteTag);
+                serializedObject.ApplyModifiedProperties();
+                pendingDeleteTag = -1;
+            }
         }
 
         private void CreateNewBuffAsset()
@@ -207,16 +218,118 @@ namespace TechCosmos.GBF.Editor
             EditorGUILayout.Space(2);
         }
 
+        // ===== 基础信息 =====
         private void DrawBaseInfo()
         {
             DrawSectionHeader("基础信息");
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
             EditorGUILayout.PropertyField(serializedObject.FindProperty("buffName"), new GUIContent("Buff 名称"));
             EditorGUILayout.PropertyField(serializedObject.FindProperty("duration"), new GUIContent("持续时间"));
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("tags"), new GUIContent("标签"), true);
+            DrawTagsField(serializedObject.FindProperty("tags"));
             EditorGUILayout.EndVertical();
         }
 
+        // ===== 标签编辑 =====
+        private void DrawTagsField(SerializedProperty tagsProp)
+        {
+            if (tagsProp == null) return;
+
+            var tagEnumType = GetBuffTagEnumType();
+
+            EditorGUILayout.LabelField("标签", EditorStyles.boldLabel);
+
+            // 绘制已有标签
+            for (int i = 0; i < tagsProp.arraySize; i++)
+            {
+                var elem = tagsProp.GetArrayElementAtIndex(i);
+
+                EditorGUILayout.BeginHorizontal();
+
+                // 用枚举下拉框显示
+                if (tagEnumType != null && Enum.TryParse(tagEnumType, elem.stringValue, out var enumVal))
+                {
+                    var newVal = EditorGUILayout.EnumPopup((Enum)enumVal);
+                    if (newVal.ToString() != elem.stringValue)
+                    {
+                        elem.stringValue = newVal.ToString();
+                    }
+                }
+                else
+                {
+                    // 兜底：如果枚举没找到，用文本输入
+                    elem.stringValue = EditorGUILayout.TextField(elem.stringValue);
+                }
+
+                // 删除按钮
+                GUI.backgroundColor = RemoveColor;
+                if (GUILayout.Button("✕", GUILayout.Width(25)))
+                {
+                    pendingDeleteTag = i;
+                }
+                GUI.backgroundColor = Color.white;
+
+                EditorGUILayout.EndHorizontal();
+            }
+
+            EditorGUILayout.Space(2);
+
+            // 添加按钮
+            if (tagEnumType != null)
+            {
+                var enumNames = Enum.GetNames(tagEnumType).Where(n => n != "None").ToList();
+
+                // 收集已添加的标签
+                var existingTags = new HashSet<string>();
+                for (int i = 0; i < tagsProp.arraySize; i++)
+                {
+                    existingTags.Add(tagsProp.GetArrayElementAtIndex(i).stringValue);
+                }
+
+                // 可用的标签（排除已添加的）
+                var availableNames = enumNames.Where(n => !existingTags.Contains(n)).ToList();
+
+                if (availableNames.Count > 0)
+                {
+                    if (GUILayout.Button($"+ 添加标签 ({availableNames.Count} 可用)", GUILayout.Height(22)))
+                    {
+                        ShowAddTagMenu(tagsProp, availableNames);
+                    }
+                }
+                else
+                {
+                    EditorGUILayout.LabelField("所有标签已添加", EditorStyles.miniLabel);
+                }
+            }
+            else
+            {
+                // 枚举没找到时，提供手动输入添加
+                if (GUILayout.Button("+ 添加标签（手动输入）", GUILayout.Height(22)))
+                {
+                    tagsProp.InsertArrayElementAtIndex(tagsProp.arraySize);
+                    tagsProp.GetArrayElementAtIndex(tagsProp.arraySize - 1).stringValue = "";
+                }
+            }
+        }
+
+        private void ShowAddTagMenu(SerializedProperty tagsProp, List<string> availableNames)
+        {
+            var menu = new GenericMenu();
+
+            foreach (var name in availableNames)
+            {
+                var capturedName = name;
+                menu.AddItem(new GUIContent(capturedName), false, () =>
+                {
+                    tagsProp.InsertArrayElementAtIndex(tagsProp.arraySize);
+                    tagsProp.GetArrayElementAtIndex(tagsProp.arraySize - 1).stringValue = capturedName;
+                    tagsProp.serializedObject.ApplyModifiedProperties();
+                });
+            }
+
+            menu.ShowAsContext();
+        }
+
+        // ===== 堆叠设置 =====
         private void DrawStackConfig()
         {
             DrawSectionHeader("堆叠设置");
@@ -231,6 +344,8 @@ namespace TechCosmos.GBF.Editor
         private bool _modifyEnumSearched;
         private Type _cachedActionEnumType;
         private bool _actionEnumSearched;
+        private Type _cachedTagEnumType;
+        private bool _tagEnumSearched;
 
         private Type GetBuffModifyEnumType()
         {
@@ -258,6 +373,20 @@ namespace TechCosmos.GBF.Editor
                 }
             }
             return _cachedActionEnumType;
+        }
+
+        private Type GetBuffTagEnumType()
+        {
+            if (!_tagEnumSearched)
+            {
+                _tagEnumSearched = true;
+                foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+                {
+                    var type = asm.GetType("TechCosmos.GBF.Runtime.BuffTag");
+                    if (type != null && type.IsEnum) { _cachedTagEnumType = type; break; }
+                }
+            }
+            return _cachedTagEnumType;
         }
 
         // ===== 属性修改 =====
@@ -369,7 +498,7 @@ namespace TechCosmos.GBF.Editor
                 case BuffFormulaType.Reference:
                     EditorGUILayout.BeginHorizontal();
                     EditorGUILayout.PropertyField(referencePathProp, new GUIContent("引用字段"));
-                    if (GUILayout.Button("📋", GUILayout.Width(25)))
+                    if (GUILayout.Button("🔍", GUILayout.Width(25)))
                         ShowReferenceFieldMenu(referencePathProp);
                     EditorGUILayout.EndHorizontal();
 
@@ -386,7 +515,7 @@ namespace TechCosmos.GBF.Editor
         private void DrawCustomFormulaEditor(SerializedProperty customFormulaProp)
         {
             if (!_foldoutStates.ContainsKey("formula_help")) _foldoutStates["formula_help"] = false;
-            _foldoutStates["formula_help"] = EditorGUILayout.Foldout(_foldoutStates["formula_help"], "📖 公式语法帮助");
+            _foldoutStates["formula_help"] = EditorGUILayout.Foldout(_foldoutStates["formula_help"], "📃 公式语法帮助");
             if (_foldoutStates["formula_help"])
             {
                 EditorGUILayout.HelpBox(
@@ -406,13 +535,13 @@ namespace TechCosmos.GBF.Editor
             EditorGUILayout.Space(3);
 
             EditorGUILayout.BeginHorizontal();
-            if (GUILayout.Button("📋 引用", EditorStyles.miniButtonLeft, GUILayout.Height(24)))
+            if (GUILayout.Button("🔍 引用", EditorStyles.miniButtonLeft, GUILayout.Height(24)))
                 ShowReferenceInsertMenu(customFormulaProp);
-            if (GUILayout.Button("⚡ 运算符", EditorStyles.miniButtonMid, GUILayout.Height(24)))
+            if (GUILayout.Button("⚙ 运算符", EditorStyles.miniButtonMid, GUILayout.Height(24)))
                 ShowInsertOperatorMenu(customFormulaProp);
             if (GUILayout.Button("🔢 数值", EditorStyles.miniButtonMid, GUILayout.Height(24)))
                 ShowInsertNumberMenu(customFormulaProp);
-            if (GUILayout.Button("✅ 检查", EditorStyles.miniButtonRight, GUILayout.Height(24)))
+            if (GUILayout.Button("✓ 检查", EditorStyles.miniButtonRight, GUILayout.Height(24)))
                 ShowFormulaCheckPopup(customFormulaProp);
             EditorGUILayout.EndHorizontal();
         }
@@ -472,15 +601,57 @@ namespace TechCosmos.GBF.Editor
                     CollectAllPublicFields(field.FieldType, newPrefix, menu, pathProp);
                 }
             }
+
+            // 扫描公开属性
+            foreach (var prop in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+            {
+                if (prop.GetCustomAttribute<BuffFieldAttribute>() != null)
+                {
+                    if (IsSimpleBuffType(prop.PropertyType))
+                    {
+                        string path = string.IsNullOrEmpty(prefix) ? prop.Name : $"{prefix}.{prop.Name}";
+                        menu.AddItem(new GUIContent($"{type.Name}/{path}"), false, () =>
+                        {
+                            pathProp.stringValue = path;
+                            pathProp.serializedObject.ApplyModifiedProperties();
+                        });
+                    }
+                    else
+                    {
+                        string newPrefix = string.IsNullOrEmpty(prefix) ? prop.Name : $"{prefix}.{prop.Name}";
+                        CollectAllPublicFields(prop.PropertyType, newPrefix, menu, pathProp);
+                    }
+                }
+                else if (prop.PropertyType.GetCustomAttribute<BuffFieldAttribute>() != null)
+                {
+                    string newPrefix = string.IsNullOrEmpty(prefix) ? prop.Name : $"{prefix}.{prop.Name}";
+                    CollectAllPublicFields(prop.PropertyType, newPrefix, menu, pathProp);
+                }
+            }
         }
 
         private void CollectAllPublicFields(Type type, string prefix, GenericMenu menu, SerializedProperty pathProp)
         {
+            // 扫描字段
             foreach (var field in type.GetFields(BindingFlags.Public | BindingFlags.Instance))
             {
                 if (IsSimpleBuffType(field.FieldType))
                 {
                     string path = $"{prefix}.{field.Name}";
+                    menu.AddItem(new GUIContent($"{type.Name}/{path}"), false, () =>
+                    {
+                        pathProp.stringValue = path;
+                        pathProp.serializedObject.ApplyModifiedProperties();
+                    });
+                }
+            }
+
+            // 扫描公开属性
+            foreach (var prop in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+            {
+                if (prop.CanRead && IsSimpleBuffType(prop.PropertyType))
+                {
+                    string path = $"{prefix}.{prop.Name}";
                     menu.AddItem(new GUIContent($"{type.Name}/{path}"), false, () =>
                     {
                         pathProp.stringValue = path;
@@ -497,8 +668,6 @@ namespace TechCosmos.GBF.Editor
 
         private void ShowReferenceInsertMenu(SerializedProperty prop)
         {
-            Debug.Log("[ShowReferenceInsertMenu] 被调用");
-
             var menu = new GenericMenu();
 
             var targetTypes = AppDomain.CurrentDomain.GetAssemblies()
@@ -508,10 +677,6 @@ namespace TechCosmos.GBF.Editor
                 .Where(t => t.GetCustomAttribute<ApplyBuffTargetAttribute>() != null)
                 .ToList();
 
-            Debug.Log($"[ShowReferenceInsertMenu] 找到 {targetTypes.Count} 个 ApplyBuffTarget 类型");
-            foreach (var t in targetTypes)
-                Debug.Log($"[ShowReferenceInsertMenu]   - {t.FullName}");
-
             if (targetTypes.Count == 0)
             {
                 menu.AddDisabledItem(new GUIContent("没有找到标记了 [ApplyBuffTarget] 的类型"));
@@ -520,10 +685,7 @@ namespace TechCosmos.GBF.Editor
             {
                 foreach (var type in targetTypes)
                 {
-                    int before = menu.GetItemCount();
                     CollectFormulaFields(type, "", menu, prop);
-                    int added = menu.GetItemCount() - before;
-                    Debug.Log($"[ShowReferenceInsertMenu] {type.Name} 添加了 {added} 个菜单项");
                 }
             }
 
@@ -544,9 +706,27 @@ namespace TechCosmos.GBF.Editor
                     }
                     else
                     {
-                        // 复杂类型，递归扫所有公开字段
                         string newPrefix = string.IsNullOrEmpty(prefix) ? field.Name : $"{prefix}.{field.Name}";
                         CollectAllPublicFormulaFields(field.FieldType, newPrefix, menu, prop);
+                    }
+                }
+            }
+
+            // 扫描公开属性
+            foreach (var propInfo in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+            {
+                if (propInfo.GetCustomAttribute<BuffFieldAttribute>() != null)
+                {
+                    if (IsSimpleBuffType(propInfo.PropertyType))
+                    {
+                        string path = string.IsNullOrEmpty(prefix) ? propInfo.Name : $"{prefix}.{propInfo.Name}";
+                        menu.AddItem(new GUIContent($"caster/{path}"), false, () => { prop.stringValue += $"caster.{path}"; prop.serializedObject.ApplyModifiedProperties(); });
+                        menu.AddItem(new GUIContent($"target/{path}"), false, () => { prop.stringValue += $"target.{path}"; prop.serializedObject.ApplyModifiedProperties(); });
+                    }
+                    else
+                    {
+                        string newPrefix = string.IsNullOrEmpty(prefix) ? propInfo.Name : $"{prefix}.{propInfo.Name}";
+                        CollectAllPublicFormulaFields(propInfo.PropertyType, newPrefix, menu, prop);
                     }
                 }
             }
@@ -559,6 +739,25 @@ namespace TechCosmos.GBF.Editor
                 if (IsSimpleBuffType(field.FieldType))
                 {
                     string path = $"{prefix}.{field.Name}";
+                    menu.AddItem(new GUIContent($"caster/{path}"), false, () =>
+                    {
+                        prop.stringValue += $"caster.{path}";
+                        prop.serializedObject.ApplyModifiedProperties();
+                    });
+                    menu.AddItem(new GUIContent($"target/{path}"), false, () =>
+                    {
+                        prop.stringValue += $"target.{path}";
+                        prop.serializedObject.ApplyModifiedProperties();
+                    });
+                }
+            }
+
+            // 扫描公开属性
+            foreach (var propInfo in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+            {
+                if (propInfo.CanRead && IsSimpleBuffType(propInfo.PropertyType))
+                {
+                    string path = $"{prefix}.{propInfo.Name}";
                     menu.AddItem(new GUIContent($"caster/{path}"), false, () =>
                     {
                         prop.stringValue += $"caster.{path}";
@@ -622,7 +821,7 @@ namespace TechCosmos.GBF.Editor
                 paths.Add(m.Value);
 
             if (paths.Count > 0)
-                issues.Add($"✅ 检测到 {paths.Count} 个引用路径：\n  " + string.Join("\n  ", paths));
+                issues.Add($"✓ 检测到 {paths.Count} 个引用路径：\n  " + string.Join("\n  ", paths));
             else
                 issues.Add("ℹ 未检测到引用路径（纯数值计算）");
 
@@ -651,7 +850,6 @@ namespace TechCosmos.GBF.Editor
 
                 DrawActionNameField(elem.FindPropertyRelative("actionName"));
 
-                // 事件自己的效果列表（直接 List<BuffEffectBase>，不走执行模式）
                 var effectsList = elem.FindPropertyRelative("effects");
                 if (effectsList != null)
                     EditorGUILayout.PropertyField(effectsList, new GUIContent("触发效果"), true);
